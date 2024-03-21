@@ -3,6 +3,7 @@ import os
 from tensorflow.keras.datasets import mnist
 from PIL import Image
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 
 # %% Prepare MNIST folders and save images of digits 3 and 8
@@ -64,5 +65,146 @@ mnist_train, mnist_test = loader.load_dataset(base_dir)
 # Assuming you have another dataset in the 'weld' directory
 weld_dir = "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld"
 weld_train, weld_test = loader.load_dataset(weld_dir)
+
+# %% Dataset overview
+import numpy as np
+
+
+class DatasetAnalyzer:
+    def __init__(self, datasets_info):
+        """
+        datasets_info: A dictionary where keys are dataset names and
+        values are paths to their respective base directories.
+        Example: {'Welding Dataset': '/path/to/quality_dataset', 'MNIST Dataset': '/path/to/mnist_dataset'}
+        """
+        self.datasets_info = datasets_info
+
+    def count_images(self, base_dir):
+        counts = {}
+
+        # Define sub-paths
+        sub_paths = ["train", "test"]
+
+        for sub_path in sub_paths:
+            path = os.path.join(base_dir, sub_path)
+            if not os.path.isdir(path):
+                continue
+
+            for category in os.listdir(path):
+                category_path = os.path.join(path, category)
+                if os.path.isdir(category_path):
+                    key = f"{sub_path.capitalize()} {category}"
+                    counts[key] = len(
+                        [
+                            name
+                            for name in os.listdir(category_path)
+                            if os.path.isfile(os.path.join(category_path, name))
+                        ]
+                    )
+
+        return counts
+
+    def plot_image_counts(self, dataset_name, counts):
+        # Categories and counts
+        categories = list(counts.keys())
+        counts_values = list(counts.values())
+
+        # Number of bars for each dataset
+        n_bars = len(categories)
+
+        # Create figure and axes
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        # Set position of bar on X axis
+        r1 = np.arange(n_bars)
+
+        # Make the plot
+        bars = ax.bar(
+            r1, counts_values, color=["blue", "orange"] * (n_bars // 2), width=0.25
+        )
+
+        # Add xticks on the middle of the group bars
+        ax.set_xlabel("Category", fontweight="bold")
+        ax.set_ylabel("Count", fontweight="bold")
+        ax.set_xticks(r1)
+        ax.set_xticklabels(categories)
+        ax.set_title(dataset_name)
+
+        # Annotate the bars with the count values
+        for bar in bars:
+            height = bar.get_height()
+            ax.annotate(
+                "{}".format(height),
+                xy=(bar.get_x() + bar.get_width() / 2, height),
+                xytext=(0, 3),  # 3 points vertical offset
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+            )
+
+    def analyze(self):
+        # Create a figure for the plots
+        fig, axes = plt.subplots(
+            nrows=1,
+            ncols=len(self.datasets_info),
+            figsize=(15, 6),
+            constrained_layout=True,
+        )
+
+        if len(self.datasets_info) == 1:
+            axes = [axes]  # Make it iterable
+
+        # Iterate over the given datasets
+        for ax, (dataset_name, dataset_path) in zip(axes, self.datasets_info.items()):
+            counts = self.count_images(dataset_path)
+            categories = list(counts.keys())
+            counts_values = list(counts.values())
+
+            # Number of bars for each dataset
+            n_bars = len(categories)
+
+            # Set position of bar on X axis
+            r1 = np.arange(n_bars)
+
+            # Make the plot
+            bars = ax.bar(
+                r1,
+                counts_values,
+                color=["navy", "royalblue"] * (n_bars // 2),
+                width=0.50,
+            )
+
+            # Add xticks on the middle of the group bars
+            ax.set_xlabel("Category", fontweight="bold")
+            ax.set_ylabel("Count", fontweight="bold")
+            ax.set_xticks(r1)
+            ax.set_xticklabels(categories, rotation=45)
+            ax.set_title(dataset_name)
+
+            # Annotate the bars with the count values
+            for bar in bars:
+                height = bar.get_height()
+                ax.annotate(
+                    "{}".format(height),
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                )
+
+        # Adjust layout to make room for category labels
+        plt.tight_layout()
+        plt.show()
+
+
+# Example usage
+datasets_info = {
+    "Welding Dataset": "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld",
+    "MNIST Dataset": "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/mnist",
+}
+save_path = "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/"
+analyzer = DatasetAnalyzer(datasets_info)
+analyzer.analyze()
 
 # %%
