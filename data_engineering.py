@@ -120,7 +120,7 @@ class DatasetAnalyzer:
 
         # Make the plot
         bars = ax.bar(
-            r1, counts_values, color=["blue", "orange"] * (n_bars // 2), width=0.25
+            r1, counts_values, color=["navy", "darkblue"] * (n_bars // 2), width=0.25
         )
 
         # Add xticks on the middle of the group bars
@@ -203,8 +203,316 @@ datasets_info = {
     "Welding Dataset": "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld",
     "MNIST Dataset": "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/mnist",
 }
-save_path = "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/"
+
 analyzer = DatasetAnalyzer(datasets_info)
 analyzer.analyze()
 
+
+# %% Image Augmentation on Welding Dataset
+import os
+import pathlib
+import PIL
+
+import cv2
+import skimage
+from IPython.display import Image, display
+from matplotlib.image import imread
+import matplotlib.cm as cm
+
+# Tensorflow basics
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.preprocessing import image
+import albumentations as al
+import numpy as np
+
+
+# Lime package for ML explainability
+from lime import lime_image
+
+# for reproducibility (does not guarantee fully reproducible results )
+import random
+
+seed = 0
+random.seed(seed)
+np.random.seed(seed)
+tf.random.set_seed(seed)
 # %%
+# %%
+dataset_url = "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld"
+data_dir = pathlib.Path(dataset_url)
+data_dir
+# %% Total images inside dataset(train + test)
+image_count = len(list(data_dir.glob("**/*.jpg")))
+print(image_count)
+# %%
+bad = list(data_dir.glob("train/bad/*"))
+PIL.Image.open(bad[0])
+# %%
+good = list(data_dir.glob("train/good/*"))
+PIL.Image.open(good[0])
+# %%shape of images
+sample = imread(bad[0])
+sample.shape
+
+# %%
+train_good = [
+    "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld",
+    "train",
+    "good",
+]
+train_bad = ["/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld", "train", "bad"]
+test_good = ["/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld", "test", "good"]
+test_bad = ["/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld", "test", "bad"]
+# %%
+owd = os.getcwd()
+train_good = os.path.join(owd, *train_good)
+train_bad = os.path.join(owd, *train_bad)
+test_good = os.path.join(owd, *test_good)
+test_bad = os.path.join(owd, *test_bad)
+
+print(f"Train Good Images Directory: {train_good}")
+print(f"Train Bad Images Directory: {train_bad}")
+print(f"Test Good Images Directory: {test_good}")
+print(f"Test Bad Images Directory: {test_bad}")
+# %%
+for infile in os.listdir(train_good):
+    print(infile)
+# %%Image Pre-Processing and Augmentation
+
+## Resizing Images
+HEIGHT = 224
+WIDTH = 224
+transform = al.Compose(
+    [
+        al.Resize(width=WIDTH, height=HEIGHT, p=1.0),
+        al.Rotate(limit=90, p=1.0),
+        al.HorizontalFlip(p=0.3),
+        al.VerticalFlip(p=0.2),
+        al.ColorJitter(contrast=2, p=0.2),
+        al.ColorJitter(brightness=2, p=0.2),
+        al.Normalize(
+            mean=[0.0, 0.0, 0.0], std=[1.0, 1.0, 1.0], max_pixel_value=255.0, p=1.0
+        ),
+    ]
+)
+# %% storing images after augmenting
+aug_train_good = (
+    "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/augment/aug_train/good"
+)
+# %%
+aug_train_bad = (
+    "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/augment/aug_train/bad"
+)
+
+
+# %%Augmenting bad for 30 times
+def augment(IMG_DIR, AUG_PATH_IMAGE, num):
+    print("*******************Augmentation Started*****************************")
+    for i, infile in enumerate(os.listdir(IMG_DIR)):
+        image = cv2.imread(os.path.join(IMG_DIR, infile))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        for j in range(num):
+            transformed = transform(image=image)
+            transformed_image = transformed["image"]
+            transformed_image = transformed_image * 255
+            transformed_image = cv2.cvtColor(transformed_image, cv2.COLOR_BGR2RGB)
+            fname = AUG_PATH_IMAGE + "/" + infile[:-4] + "_" + str(j) + ".jpg"
+            cv2.imwrite(fname, transformed_image)
+    print()
+    print("*******************Augmentation Finished*****************************")
+
+
+# %%
+# augment(train_good, aug_train_good, 4)  #: 181*4=724
+augment(train_good, aug_train_good, 20)  #: 181*20=3620
+# %%
+# augment(train_bad, aug_train_bad, 25)  #:28*25
+augment(train_bad, aug_train_bad, 125)  #:28*125=3500
+
+# %%
+classes = ["bad", "good"]
+
+for labels in enumerate(classes):
+    print(labels)
+
+# %% Model engineering
+# finetuning model according to both the datasets and performing grid search on parameters like learning rate and batch size and save the best model for each dataset, Also track the model performance on the hyperparameter and save in csv or json format the results.
+
+import os
+import json
+import pandas as pd
+import tensorflow as tf
+from tensorflow.keras.applications import ResNet50
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.model_selection import ParameterGrid
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
+
+
+class ModelTrainer:
+    def __init__(self, datasets_info):
+        self.datasets_info = datasets_info
+
+    def build_model(self):
+        base_model = ResNet50(
+            include_top=False, weights="imagenet", input_shape=(224, 224, 3)
+        )
+        for layer in base_model.layers:
+            layer.trainable = False
+
+        global_average_layer = GlobalAveragePooling2D()
+        prediction_layer = Dense(1, activation="sigmoid")
+        model = tf.keras.Sequential(
+            [
+                base_model,
+                global_average_layer,
+                prediction_layer,
+            ]
+        )
+        return model
+
+    def prepare_data(self, dataset_path, validation_split=0.2, batch_size=32):
+        train_data_gen = ImageDataGenerator(
+            rescale=1.0 / 255, validation_split=validation_split
+        )
+        train_generator = train_data_gen.flow_from_directory(
+            os.path.join(dataset_path, "train"),
+            target_size=(224, 224),
+            batch_size=batch_size,
+            class_mode="binary",
+            subset="training",
+        )
+        validation_generator = train_data_gen.flow_from_directory(
+            os.path.join(dataset_path, "train"),
+            target_size=(224, 224),
+            batch_size=batch_size,
+            class_mode="binary",
+            subset="validation",
+        )
+        test_data_gen = ImageDataGenerator(rescale=1.0 / 255)
+        test_generator = test_data_gen.flow_from_directory(
+            os.path.join(dataset_path, "test"),
+            target_size=(224, 224),
+            batch_size=batch_size,
+            class_mode="binary",
+            shuffle=False,
+        )
+        return train_generator, validation_generator, test_generator
+
+    def fine_tune_model(
+        self,
+        model,
+        train_generator,
+        validation_generator,
+        learning_rate=0.001,
+        epochs=100,
+    ):
+        for layer in model.layers[:100]:  # Fine-tune from a specific layer onwards
+            layer.trainable = True
+
+        model.compile(
+            optimizer=Adam(lr=learning_rate),
+            loss="binary_crossentropy",
+            metrics=["accuracy"],
+        )
+
+        callbacks = [
+            ReduceLROnPlateau(
+                monitor="val_loss", factor=0.2, patience=5, min_lr=0.0001
+            ),
+            ModelCheckpoint(
+                "best_model.h5",
+                monitor="val_accuracy",
+                verbose=1,
+                save_best_only=True,
+                mode="max",
+            ),
+            EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True),
+        ]
+
+        history = model.fit(
+            train_generator,
+            epochs=epochs,
+            validation_data=validation_generator,
+            callbacks=callbacks,
+        )
+
+        return history
+
+    def grid_search(self, param_grid):
+        results = []
+        for params in ParameterGrid(param_grid):
+            for dataset_name, dataset_path in self.datasets_info.items():
+                train_generator, validation_generator, test_generator = (
+                    self.prepare_data(dataset_path, batch_size=params["batch_size"])
+                )
+                model = self.build_model()
+                history = self.fine_tune_model(
+                    model,
+                    train_generator,
+                    validation_generator,
+                    learning_rate=params["learning_rate"],
+                    epochs=params["epochs"],
+                )
+                val_accuracy = history.history["val_accuracy"][-1]
+                results.append(
+                    {
+                        "dataset": dataset_name,
+                        "params": params,
+                        "val_accuracy": val_accuracy,
+                    }
+                )
+        return results
+
+    def save_best_models(self, results, save_dir):
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        for result in results:
+            dataset_name = result["dataset"]
+            params = result["params"]
+            model = self.build_model()
+            train_generator, validation_generator, test_generator = self.prepare_data(
+                self.datasets_info[dataset_name], batch_size=params["batch_size"]
+            )
+            self.fine_tune_model(
+                model,
+                train_generator,
+                validation_generator,
+                learning_rate=params["learning_rate"],
+                epochs=params["epochs"],
+            )
+            model.save(os.path.join(save_dir, f"{dataset_name}_best_model.h5"))
+
+    def save_results(self, results, save_path):
+        results_df = pd.DataFrame(results)
+        results_df.to_csv(save_path, index=False)
+
+
+# Example usage
+datasets_info = {
+    "Dataset 1": "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/mnist",
+    "Dataset 2": "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld",
+}
+
+trainer = ModelTrainer(datasets_info)
+
+# Define hyperparameter grid
+param_grid = {
+    "learning_rate": [0.001, 0.01, 0.1],
+    "batch_size": [16, 32, 64, 128],
+    "epochs": [5, 10],
+}
+
+# Perform grid search
+results = trainer.grid_search(param_grid)
+
+# Save results
+trainer.save_results(results, "results.csv")
+
+# Save best models
+trainer.save_best_models(results, "best_models")

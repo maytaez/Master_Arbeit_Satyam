@@ -26,3 +26,7 @@ dependencies:
       - bayesian-optimization
       - gym
       - kaggle
+      - opencv-contrib-python==4.6.0.66
+      - scikit-image
+      - albumentations
+      - lime
