@@ -285,7 +285,7 @@ class ModelTrainer:
             layer.trainable = True
 
         model.compile(
-            optimizer=Adam(lr=learning_rate),
+            optimizer=Adam(learning_rate=learning_rate),
             loss="binary_crossentropy",
             metrics=["accuracy"],
         )
@@ -365,7 +365,7 @@ class ModelTrainer:
 # Example usage
 datasets_info = {
     "Dataset 1": "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/mnist",
-    "Dataset 2": "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/weld",
+    "Dataset 2": "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/augment",
 }
 
 trainer = ModelTrainer(datasets_info)
@@ -374,7 +374,7 @@ trainer = ModelTrainer(datasets_info)
 param_grid = {
     "learning_rate": [0.001, 0.01, 0.1],
     "batch_size": [16, 32, 64, 128],
-    "epochs": [5, 10],
+    "epochs": [100],
 }
 
 # Perform grid search
@@ -385,3 +385,5 @@ trainer.save_results(results, "results.csv")
 
 # Save best models
 trainer.save_best_models(results, "best_models")
+
+# %%
