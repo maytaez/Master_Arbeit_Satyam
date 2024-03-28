@@ -20,10 +20,10 @@ class ImageClassifierApp:
         self.window = tk.Tk()
         self.window.title("Image Classifier with LIME Explanation")
         self.target_size = (224, 224)
-        # self.draw_color = "green"
-        # self.eraser_on = False
+        self.draw_color = "green"
+        self.eraser_on = False
+        self.mask = None
         self.setup_ui()
-        self.annotation_coordinates = []
 
     def load_pretrained_model(self, model_path):
         try:
@@ -63,17 +63,13 @@ class ImageClassifierApp:
         #     self.window, text="Augment Image", command=self.augment_image
         # )
         # self.augment_button.pack()
-        # Define the save button here
         self.save_button = tk.Button(
             self.window,
-            text="Save Cropped Annotation",
-            command=self.save_cropped_annotation_area,
+            text="Save Annotated Image",
+            command=self.save_drawn_annotations,
         )
-        self.save_button.pack()
-
         self.canvas = tk.Canvas(self.window, width=224, height=224)
         self.canvas.pack()
-        self.canvas.bind("<B1-Motion>", self.draw_on_image)
 
         # self.toggle_eraser_button = tk.Button(
         #     self.window, text="Toggle Eraser", command=self.toggle_eraser
@@ -81,9 +77,7 @@ class ImageClassifierApp:
         # self.toggle_eraser_button.pack()
 
         self.save_button = tk.Button(
-            self.window,
-            text="Save Annotated Image",
-            command=self.save_cropped_annotation_area,
+            self.window, text="Save Annotated Image", command=self.save_annotated_image
         )
         self.save_button.pack()
 
@@ -199,164 +193,82 @@ class ImageClassifierApp:
 
     def draw_on_image(self, event):
         x, y = event.x, event.y
-        size = 5  # Assuming a fixed size for simplicity
-        self.canvas.create_oval(
-            x - size, y - size, x + size, y + size, fill="red", outline="red"
-        )
-        self.annotation_coordinates.append((x - size, y - size, x + size, y + size))
+        size = 10 if self.eraser_on else 5
+        if self.mask is None:
+            self.mask = Image.new(
+                "L", (224, 224), 0
+            )  # Create a new mask if it doesn't exist
+        draw = ImageDraw.Draw(self.mask)
+        if self.eraser_on:
+            # Update both the canvas and the mask for erasing
+            self.canvas.create_rectangle(
+                x - size, y - size, x + size, y + size, outline="", fill="white"
+            )
+            draw.rectangle([x - size, y - size, x + size, y + size], fill=0)
+        else:
+            # Update both the canvas and the mask for drawing
+            self.canvas.create_oval(
+                x - size, y - size, x + size, y + size, fill="black", outline="black"
+            )
+            draw.ellipse([x - size, y - size, x + size, y + size], fill=255)
 
-    # def draw_on_image(self, event):
-    #     x, y = event.x, event.y
-    #     size = 10 if self.eraser_on else 5
-    #     if self.eraser_on:
-    #         # Erase by drawing transparent rectangles
-    #         self.canvas.create_rectangle(
-    #             x - size,
-    #             y - size,
-    #             x + size,
-    #             y + size,
-    #             outline="",
-    #             fill="",
-    #             stipple="gray12",
-    #         )
+    def save_annotated_image(self):
+        if self.mask is not None:
+            original_img = Image.open(self.uncertain_image_path).convert("RGB")
+            # Ensure the mask is the same size as the original image
+            scaled_mask = self.mask.resize(original_img.size, Image.ANTIALIAS)
+            # Apply the mask to the original image
+            result_img = ImageChops.multiply(original_img, scaled_mask.convert("RGB"))
+            result_img_path = os.path.join(self.base_folder, "annotated_img.png")
+            result_img.save(result_img_path)
+            messagebox.showinfo(
+                "Success", f"Annotated image saved successfully at {result_img_path}"
+            )
+        else:
+            messagebox.showerror("Error", "No annotations to save.")
 
-    #     else:
-    #         # Draw normally
-    #         self.canvas.create_oval(
-    #             x - size,
-    #             y - size,
-    #             x + size,
-    #             y + size,
-    #             fill=self.draw_color,
-    #             outline=self.draw_color,
-    #         )
+    def save_drawn_annotations(self):
+        # Get the size of the original image
+        original_img = Image.open(self.uncertain_image_path).convert("RGB")
 
-    # def toggle_eraser(self):
-    #     self.eraser_on = not self.eraser_on
-    #     self.draw_color = "gray12" if self.eraser_on else "red"
+        # Create an empty mask with the same dimensions as the original image
+        mask = Image.new("L", original_img.size, 0)
+        draw = ImageDraw.Draw(mask)
 
-    # def save_annotated_image(self):
-    #     # # Ensure the canvas is at the top left of the window
-    #     # self.window.update()
-    #     # x = self.window.winfo_rootx() + self.canvas.winfo_x()
-    #     # y = self.window.winfo_rooty() + self.canvas.winfo_y()
-    #     # x1 = x + self.canvas.winfo_width()
-    #     # y1 = y + self.canvas.winfo_height()
-    #     # ImageGrab.grab().crop((x, y, x1, y1)).save("annotated_image.png")
-    #     # Save the current canvas content as a PostScript file
+        # Assume the canvas drawing coordinates are stored in a list of tuples
+        drawing_coords = [(x1, y1, x2, y2)]  # Replace with the actual coordinates
 
-    #     ps_filename = "canvas_output.ps"
-    #     self.canvas.postscript(file=ps_filename, colormode="color")
+        # Scale the drawing coordinates to the size of the original image
+        scale_width = original_img.width / self.target_size[0]
+        scale_height = original_img.height / self.target_size[1]
 
-    #     # Use PIL to convert the PostScript file to PNG
-    #     try:
-    #         with Image.open(ps_filename) as img:
-    #             img.save(
-    #                 "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/annotated_img.png"
-    #             )
-    #         os.remove(ps_filename)  # To remove the PostScript file
-    #         messagebox.showinfo("Success", "Image saved successfully")
-    #     except Exception as e:
-    #         messagebox.showerror("Error", f"Failed to save image : {e}")
+        scaled_coords = [
+            (x1 * scale_width, y1 * scale_height, x2 * scale_width, y2 * scale_height)
+            for (x1, y1, x2, y2) in drawing_coords
+        ]
 
-    # # def augment_image(self):
-    # #     if hasattr(
-    # #         self, "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/annotated_img.png"
-    # #     ) and os.path.exists(self.uncertain_image_path):
-    # #         img = Image.open(self.uncertain_image_path)
-    # #         img = img.resize(self.target_size, Image.ANTIALIAS)
-    # #         img_array = np.array(img) / 255.0  # Normalize the image array for skimage
+        # Draw the scaled coordinates onto the mask
+        for x1, y1, x2, y2 in scaled_coords:
+            draw.rectangle([x1, y1, x2, y2], fill=255)
 
-    # #         # Perform augmentations
-    # #         scaled_img = self.scale_image(img_array)
-    # #         rotated_img = self.rotate_image(scaled_img)
-    # #         translated_img = self.translate_image(rotated_img)
+        # Threshold the mask to make sure it's binary
+        thresholded_mask = mask.point(lambda x: 255 if x > 0 else 0, "1")
 
-    # #         # Convert back to PIL Image and display or save
-    # #         final_img = Image.fromarray((translated_img * 255).astype(np.uint8))
-    # #         self.display_final_augmented_image(
-    # #             final_img
-    # #         )  # Implement this method to display the image
-    # #         final_img.save(
-    # #             "/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/augmented.png"
-    # #         )  # Save the final augmented image
-    # #     else:
-    # #         messagebox.showerror("Error", "No image loaded or image path is incorrect")
-
-    # # def display_final_augmented_image(self, image):
-    # #     photo = ImageTk.PhotoImage(image)
-    # #     self.image_label.config(image=photo)
-    # #     self.image_label.image = photo  # Keep a reference
-
-    # def save_drawn_annotations(self):
-    #     # Get the size of the original image
-    #     original_img = Image.open(self.uncertain_image_path).convert("RGB")
-
-    #     # Create an empty mask with the same dimensions as the original image
-    #     mask = Image.new("L", original_img.size, 0)
-    #     draw = ImageDraw.Draw(mask)
-
-    #     # Assume the canvas drawing coordinates are stored in a list of tuples
-    #     drawing_coords = [(x1, y1, x2, y2)]  # Replace with the actual coordinates
-
-    #     # Scale the drawing coordinates to the size of the original image
-    #     scale_width = original_img.width / self.target_size[0]
-    #     scale_height = original_img.height / self.target_size[1]
-
-    #     scaled_coords = [
-    #         (x1 * scale_width, y1 * scale_height, x2 * scale_width, y2 * scale_height)
-    #         for (x1, y1, x2, y2) in drawing_coords
-    #     ]
-
-    #     # Draw the scaled coordinates onto the mask
-    #     for x1, y1, x2, y2 in scaled_coords:
-    #         draw.rectangle([x1, y1, x2, y2], fill=255)
-
-    #     # Threshold the mask to make sure it's binary
-    #     thresholded_mask = mask.point(lambda x: 255 if x > 0 else 0, "1")
-
-    #     # Crop the original image using the mask
-    #     # The mask defines the area to keep
-    #     bbox = thresholded_mask.getbbox()
-    #     cropped_image = original_img.crop(bbox)
-    #     cropped_image.save("/Users/satyampant/Desktop/Uni/Master_Arbeit_Satyam/cropped_image.png")
-    #     # annotated_img_path = os.path.join(self.base_folder, "annotated_image.png")
-    #     # # Save the cropped image
-    #     # cropped_image.save(annotated_img_path)  # Update the path as needed
-
-    #     messagebox.showinfo(
-    #         "Success", f"Annotated image saved successfully"
-    #     )
-
-    # def run(self):
-    #     self.window.mainloop()
-    def save_cropped_annotation_area(self):
-        if not self.annotation_coordinates:
-            messagebox.showinfo("Info", "No annotations made to save.")
-            return
-
-        # Load the original image
-        original_image = Image.open(self.uncertain_image_path).convert("RGB")
-
-        # Calculate the bounding box of all annotations
-        min_x = min([coords[0] for coords in self.annotation_coordinates])
-        min_y = min([coords[1] for coords in self.annotation_coordinates])
-        max_x = max([coords[2] for coords in self.annotation_coordinates])
-        max_y = max([coords[3] for coords in self.annotation_coordinates])
-
-        # Crop the image to the bounding box of the annotations
-        cropped_image = original_image.crop((min_x, min_y, max_x, max_y))
-
+        # Crop the original image using the mask
+        # The mask defines the area to keep
+        bbox = thresholded_mask.getbbox()
+        cropped_image = original_img.crop(bbox)
+        cropped_image.save("annotated_image.png")
+        annotated_img_path = os.path.join(self.base_folder, "annotated_image.png")
         # Save the cropped image
-        save_path = os.path.join(self.base_folder, "cropped_annotated_image.png")
-        cropped_image.save(save_path)
-        messagebox.showinfo("Success", f"Cropped annotated image saved to {save_path}")
+        cropped_image.save(annotated_img_path)  # Update the path as needed
 
-    # Adjust the setup_ui method to change the button command to the new save method
-    def setup_ui(self):
-        # Keep all existing UI setup code here
-        # Change or add the button for saving the cropped annotation area
-        self.save_button.config(command=self.save_cropped_annotation_area)
+        messagebox.showinfo(
+            "Success", f"Annotated image saved successfully at {annotated_img_path}"
+        )
+
+    def run(self):
+        self.window.mainloop()
 
 
 if __name__ == "__main__":
