@@ -8,7 +8,7 @@ from keras.preprocessing.image import load_img, img_to_array
 from keras.applications.resnet50 import preprocess_input
 from lime import lime_image
 from skimage.segmentation import mark_boundaries
-from skimage.transform import rescale, rotate, AffineTransform, warp
+from skimage import transform
 import os
 from PIL import Image, ImageDraw, ImageChops
 
@@ -68,7 +68,14 @@ class ImageClassifierApp:
             text="Save Annotated Image",
             command=self.save_drawn_annotations,
         )
-        self.canvas = tk.Canvas(self.window, width=224, height=224)
+
+        self.augment_button = tk.Button(
+            self.window,
+            text="Augment Annotated Image",
+            command=self.augment_and_save_images,
+        )
+        self.augment_button.pack()
+        self.canvas = tk.Canvas(self.window, width=400, height=400)
         self.canvas.pack()
 
         # self.toggle_eraser_button = tk.Button(
@@ -182,14 +189,38 @@ class ImageClassifierApp:
             self.canvas.image = self.photo
 
     def scale_image(self, image, scale_factor=1.2):
-        return rescale(image, scale_factor, anti_aliasing=True, multichannel=True)
+        # Convert PIL image to numpy array
+        image_np = np.array(image)
+        # Apply scaling
+        scaled_np = transform.rescale(
+            image_np,
+            scale_factor,
+            anti_aliasing=True,
+            # multichannel=True,
+            mode="constant",
+        )
+        # Convert back to PIL image
+        scaled_image = Image.fromarray((scaled_np * 255).astype(np.uint8))
+        return scaled_image
 
     def rotate_image(self, image, angle=45):
-        return rotate(image, angle)
+        # Convert PIL image to numpy array
+        image_np = np.array(image)
+        # Apply rotation
+        rotated_np = transform.rotate(image_np, angle, mode="edge")
+        # Convert back to PIL image
+        rotated_image = Image.fromarray((rotated_np * 255).astype(np.uint8))
+        return rotated_image
 
     def translate_image(self, image, translation=(25, 25)):
-        transform = AffineTransform(translation=translation)
-        return warp(image, transform, mode="wrap")
+        # Convert PIL image to numpy array
+        image_np = np.array(image)
+        # Apply translation
+        tform = transform.AffineTransform(translation=translation)
+        translated_np = transform.warp(image_np, tform.inverse, mode="edge")
+        # Convert back to PIL image
+        translated_image = Image.fromarray((translated_np * 255).astype(np.uint8))
+        return translated_image
 
     def draw_on_image(self, event):
         x, y = event.x, event.y
@@ -266,6 +297,37 @@ class ImageClassifierApp:
         messagebox.showinfo(
             "Success", f"Annotated image saved successfully at {annotated_img_path}"
         )
+
+    def augment_and_save_images(self):
+        annotated_img_path = os.path.join(self.base_folder, "annotated_img.png")
+        if os.path.exists(annotated_img_path):
+            # Load the annotated image
+            original_img = Image.open(annotated_img_path)
+
+            # Apply and save scaling augmentation
+            scaled_img = self.scale_image(original_img)
+            scaled_img.save(os.path.join(self.base_folder, "scaled_annotated_img.png"))
+
+            # Apply and save rotation augmentation
+            rotated_img = self.rotate_image(original_img)
+            rotated_img.save(
+                os.path.join(self.base_folder, "rotated_annotated_img.png")
+            )
+
+            # Apply and save translation augmentation
+            translated_img = self.translate_image(original_img)
+            translated_img.save(
+                os.path.join(self.base_folder, "translated_annotated_img.png")
+            )
+
+            messagebox.showinfo(
+                "Success", "All augmented images have been saved successfully."
+            )
+        else:
+            messagebox.showerror(
+                "Error",
+                "Annotated image not found. Please annotate and save an image first.",
+            )
 
     def run(self):
         self.window.mainloop()
